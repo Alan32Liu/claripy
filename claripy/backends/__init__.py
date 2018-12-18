@@ -752,6 +752,7 @@ class Backend(object):
 from ..errors import BackendError, ClaripyRecursionError, BackendUnsupportedError
 from .backend_z3 import BackendZ3
 from .backend_z3_parallel import BackendZ3Parallel
+from .backend_z3_quick_sampler import BackendZ3QuickSampler
 from .backend_concrete import BackendConcrete
 from .backend_vsa import BackendVSA
 from ..ast.base import Base
