@@ -95,7 +95,8 @@ class SolverCompositeChild(
     frontend_mixins.ModelCacheMixin,
     frontends.FullFrontend
 ):
-    def __init__(self, backend=backends.z3, **kwargs):
+    def __init__(self, backend=backends._all_backends[2], **kwargs):
+        # TODO: Changed QS to default backend
         super(SolverCompositeChild, self).__init__(backend, **kwargs)
 
     def __repr__(self):
