@@ -120,10 +120,11 @@ class BackendZ3QuickSampler(BackendZ3):
 
     def _batch_eval(self, exprs, n, extra_constraints=(), solver=None, model_callback=None):
         global PST_INSTRS
-        print("##### In BVSampler #####")
+        print("########## Quick Sampler: {}".format(n))
+        # pdb.set_trace()
         if not self._bv_samples:
             print('set up bvsampler {}'.format(exprs))
-            self._bv_samples = self._bv_sampler(solver, exprs[0])
+            self._bv_samples = self._bv_sampler(z3.Optimize(), exprs[0])
 
         # try:
         #     return [next(self._bvsample)]
@@ -136,7 +137,7 @@ class BackendZ3QuickSampler(BackendZ3):
 
         # print "Batch eval existing: {}".format(self.update_PST_INSTRS())
         result_values = []
-        pdb.set_trace()
+        # pdb.set_trace()
         for _ in range(n):
             # print('next_sample', next(sample), type(next(sample)))
             try:
@@ -156,4 +157,5 @@ class BackendZ3QuickSampler(BackendZ3):
         if not result_values:
             pdb.set_trace()
             return [None]
+        print("BV Sampler: ", result_values)
         return result_values
