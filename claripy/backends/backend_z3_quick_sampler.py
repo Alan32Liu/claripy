@@ -28,13 +28,7 @@ class BackendZ3QuickSampler(BackendZ3):
     #     # see angr/state_plugins/solver.py _cast_to
     #     return '{:x}'.format(x).zfill(n/4).decode('hex')
 
-    @staticmethod
-    def update_pst_strs():
-        global PST_INSTRS
-        return PST_INSTRS
-
     def _bv_sampler(self, solver, target):
-        global PST_INSTRS
 
         cinr = 0
         n = target.size()
@@ -45,37 +39,37 @@ class BackendZ3QuickSampler(BackendZ3):
         results = set()
 
         while True:
-            # print('---------------------------')
+            # LOGGER.info('---------------------------')
             guess = z3.BitVecVal(random.getrandbits(n), n)
-            # print('------------0--------------')
+            # LOGGER.info('------------0--------------')
 
             solver.push()
 
             solver.add(result ^ delta == guess)
-            print('------------1--------------')
+            LOGGER.info('------------1--------------')
             if solver.check() != z3.sat:
-                print("**************No solution ****************")
+                LOGGER.info("**************No solution ****************")
                 break
 
             model = solver.model()
             result0 = model[result].as_long()
             solver.pop()
-            print('------------2--------------')
+            LOGGER.info('------------2--------------')
             results.add(result0)
             yield result0
 
-            print('------------3--------------')
-            print('solver: ' + str(solver))
-            print('guess: ' + str(guess))
-            print('model: ' + str(model))
+            LOGGER.info('------------3--------------')
+            LOGGER.info('solver: ' + str(solver))
+            LOGGER.info('guess: ' + str(guess))
+            LOGGER.info('model: ' + str(model))
 
             mutations = {}
 
             solver.push()
-            print('------------4--------------')
+            LOGGER.info('------------4--------------')
             nresults = 0
             for i in range(n):
-                print('mutating bit ' + str(i))
+                LOGGER.info('mutating bit ' + str(i))
                 solver.push()
                 goal = z3.BitVecVal(result0, n)
                 solver.add(result ^ delta == goal)
@@ -98,20 +92,20 @@ class BackendZ3QuickSampler(BackendZ3):
                             continue
 
                         candidate = (result0 ^ ((result0 ^ value) | (result0 ^ result1)))
-                        print('yielding candidate ' + str(candidate) + ' at level ' + str(level))
+                        LOGGER.info('yielding candidate ' + str(candidate) + ' at level ' + str(level))
 
                         if candidate not in results:
                             results.add(candidate)
                             nresults += 1
                             yield candidate
                         else:
-                            print("=============={}===========-".format(cinr))
+                            LOGGER.info("=============={}===========-".format(cinr))
                             cinr += 1
 
                         new_mutations[candidate] = level + 1
 
                     mutations.update(new_mutations)
-                # print("============== Looping forever===========-")
+                # LOGGER.info("============== Looping forever===========-")
                 solver.pop()
 
             solver.pop()
@@ -119,11 +113,10 @@ class BackendZ3QuickSampler(BackendZ3):
                 break
 
     def _batch_eval(self, exprs, n, extra_constraints=(), solver=None, model_callback=None):
-        global PST_INSTRS
-        print("########## Quick Sampler: {}".format(n))
+        LOGGER.info("########## Quick Sampler: {}".format(n))
         # pdb.set_trace()
         if not self._bv_samples:
-            print('set up bvsampler {}'.format(exprs))
+            LOGGER.info('set up bvsampler {}'.format(exprs))
             self._bv_samples = self._bv_sampler(z3.Optimize(), exprs[0])
 
         # try:
@@ -131,31 +124,31 @@ class BackendZ3QuickSampler(BackendZ3):
         # except StopIteration:
         #     return [None]
 
-        # print('sample', sample, type(sample))
+        # LOGGER.info('sample', sample, type(sample))
         # for r in existing_results:
         #     self.update_PST_INSTRS().add(r)
 
-        # print "Batch eval existing: {}".format(self.update_PST_INSTRS())
+        # LOGGER.info "Batch eval existing: {}".format(self.update_PST_INSTRS())
         result_values = []
         # pdb.set_trace()
         for _ in range(n):
-            # print('next_sample', next(sample), type(next(sample)))
+            # LOGGER.info('next_sample', next(sample), type(next(sample)))
             try:
                 result = next(self._bv_samples)
-                print("BVSampler next: {}".format(result))
+                LOGGER.info("BVSampler next: {}".format(result))
                 # while result in self.update_PST_INSTRS():
                 #     result = next(self._bvsample)
-                # print result
+                # LOGGER.info result
                 result_values.append(result)
                 # self.update_PST_INSTRS().add(result)
             except StopIteration:
                 pdb.set_trace()
-                print("======== Stopped Iteration ========")
+                LOGGER.info("======== Stopped Iteration ========")
                 break
-        # print(list(result_values))
-        # print "Batch eval ends: {}".format(result_values)
+        # LOGGER.info(list(result_values))
+        # LOGGER.info "Batch eval ends: {}".format(result_values)
         if not result_values:
             pdb.set_trace()
             return [None]
-        print("BV Sampler: ", result_values)
+        LOGGER.info("BV Sampler: ", result_values)
         return result_values
