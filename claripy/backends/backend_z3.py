@@ -571,9 +571,13 @@ class BackendZ3(Backend):
         else:
             raise BackendError("Called _abstract_fp_val with unknown type")
 
+    # Factored out so subclasses can decide to use z3.Optimize instead
+    def _solver(self):
+        return z3.Solver(ctx=self._context)
+
     def solver(self, timeout=None):
         if not self.reuse_z3_solver or getattr(self._tls, 'solver', None) is None:
-            s = z3.Solver(ctx=self._context)
+            s = self._solver()
             _add_memory_pressure(1024 * 1024 * 10)
             if self.reuse_z3_solver:
                 # Store the Z3 solver to a thread-local storage if the reuse-solver option is enabled

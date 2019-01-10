@@ -16,6 +16,9 @@ class BackendZ3QuickSampler(BackendZ3):
         BackendZ3.__init__(self)
         self._bv_samples = None
 
+    def _solver(self):
+        return z3.Optimize(ctx=self._context)
+
     @staticmethod
     def _bv_count(b):
         n = b.size()
@@ -34,6 +37,8 @@ class BackendZ3QuickSampler(BackendZ3):
         n = target.size()
         delta = z3.BitVec('delta',  n)
         result = z3.BitVec('result', n)
+
+        # solver = self.solver()
         solver.add(result == target)
         solver.minimize(self._bv_count(delta))
         results = set()
@@ -50,7 +55,7 @@ class BackendZ3QuickSampler(BackendZ3):
             if solver.check() != z3.sat:
                 LOGGER.info("**************No solution ****************")
                 break
-
+            print(solver)
             model = solver.model()
             result0 = model[result].as_long()
             solver.pop()
@@ -113,11 +118,16 @@ class BackendZ3QuickSampler(BackendZ3):
                 break
 
     def _batch_eval(self, exprs, n, extra_constraints=(), solver=None, model_callback=None):
+        print(solver)
+        if len(extra_constraints) > 0 or n != 1:
+            solver.push()
+            if len(extra_constraints) > 0:
+                solver.add(*extra_constraints)
         LOGGER.info("########## Quick Sampler: {}".format(n))
         # pdb.set_trace()
         if not self._bv_samples:
             LOGGER.info('set up bvsampler {}'.format(exprs))
-            self._bv_samples = self._bv_sampler(z3.Optimize(), exprs[0])
+            self._bv_samples = self._bv_sampler(solver, exprs[0])
 
         # try:
         #     return [next(self._bvsample)]
@@ -151,4 +161,5 @@ class BackendZ3QuickSampler(BackendZ3):
             pdb.set_trace()
             return [None]
         LOGGER.info("BV Sampler: ", result_values)
+        print([[num for num in val.to_bytes(2, 'big')] for val in result_values])
         return result_values
