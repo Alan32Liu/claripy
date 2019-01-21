@@ -284,9 +284,16 @@ class ModelCacheMixin(object):
 
         return results
 
+    def batch_iterate(self, asts):
+        print(super(ModelCacheMixin, self))
+        return super(ModelCacheMixin, self).batch_iterate(asts)
+
     def eval(self, e, n, **kwargs):
         # TODO: Will make this a separate method when introducing PST_INPUT_STR
         return tuple( r for r in ModelCacheMixin.batch_eval(self, [e], n=n, **kwargs) )
+
+    def iterate(self, e):
+        return self.batch_iterate([e])
 
     def min(self, e, extra_constraints=(), **kwargs):
         cached = [ ]

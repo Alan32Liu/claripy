@@ -6,6 +6,10 @@ class ConcreteHandlerMixin(object):
         else:
             return super(ConcreteHandlerMixin, self).eval(e, n, **kwargs)
 
+    def iterate(self, e):
+        c = self._concrete_value(e)
+        return super(ConcreteHandlerMixin, self).iterate(e) if c is None else c,
+
     def batch_eval(self, exprs, n, **kwargs): #pylint:disable=unused-argument
         concrete_exprs = [ self._concrete_value(e) for e in exprs ]
         symbolic_exprs = [ e for e,c in zip(exprs, concrete_exprs) if c is None ]

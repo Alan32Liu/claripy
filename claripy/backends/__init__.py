@@ -528,6 +528,18 @@ class Backend(object):
             solver=solver, model_callback=model_callback
         )
 
+    def batch_iterate(self, exprs, solver):
+        """
+        Evaluate a list expressions
+        :param exprs:   A list of expressions to evaluate
+        :param solver: a z3.Optimize object native to the backend, to assist in the evaluation.
+        :return: an iterator of the values for exprs
+        """
+        assert type(self) is BackendZ3QuickSampler
+        assert getattr(self, 'bv_sampler')
+        sampler = self.bv_sampler(solver, [self.convert(ex) for ex in exprs])
+        return sampler
+
     def _batch_eval(self, exprs, n, extra_constraints=(), solver=None, model_callback=None): #pylint:disable=unused-argument,no-self-use
         """
         Evaluate one or multiple expressions.

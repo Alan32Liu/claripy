@@ -39,6 +39,9 @@ class ConstraintFilterMixin(object):
         ec = self._constraint_filter(extra_constraints)
         return super(ConstraintFilterMixin, self).eval(e, n, extra_constraints=ec, **kwargs)
 
+    def iterate(self, e):
+        return super(ConstraintFilterMixin, self).iterate(e)
+
     def batch_eval(self, exprs, n, extra_constraints=(), **kwargs):
         ec = self._constraint_filter(extra_constraints)
         return super(ConstraintFilterMixin, self).batch_eval(exprs, n, extra_constraints=ec, **kwargs)

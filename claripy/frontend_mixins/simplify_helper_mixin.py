@@ -12,6 +12,9 @@ class SimplifyHelperMixin(object):
             self.simplify()
         return super(SimplifyHelperMixin, self).eval(e, n, *args, **kwargs)
 
+    def iterate(self, e):
+        return super(SimplifyHelperMixin, self).iterate(e)
+
     def batch_eval(self, e, n, *args, **kwargs):
         if n > 1:
             self.simplify()

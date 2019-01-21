@@ -31,9 +31,9 @@ class BackendZ3QuickSampler(BackendZ3):
     #     # see angr/state_plugins/solver.py _cast_to
     #     return '{:x}'.format(x).zfill(n/4).decode('hex')
 
-    def _bv_sampler(self, solver, target):
-
+    def bv_sampler(self, solver, exprs):
         cinr = 0
+        target = exprs[0]
         n = target.size()
         delta = z3.BitVec('delta',  n)
         result = z3.BitVec('result', n)
@@ -70,7 +70,6 @@ class BackendZ3QuickSampler(BackendZ3):
 
             mutations = {}
 
-            solver.push()
             LOGGER.info('------------4--------------')
             nresults = 0
             for i in range(n):
@@ -82,6 +81,11 @@ class BackendZ3QuickSampler(BackendZ3):
 
                 if solver.check() == z3.sat:
                     model = solver.model()
+                else:
+                    model = None
+                solver.pop()
+
+                if model:
                     result1 = model[result].as_long()
 
                     if result1 not in results:
@@ -111,55 +115,5 @@ class BackendZ3QuickSampler(BackendZ3):
 
                     mutations.update(new_mutations)
                 # LOGGER.info("============== Looping forever===========-")
-                solver.pop()
-
-            solver.pop()
             if not nresults:
                 break
-
-    def _batch_eval(self, exprs, n, extra_constraints=(), solver=None, model_callback=None):
-        print(solver)
-        if len(extra_constraints) > 0 or n != 1:
-            solver.push()
-            if len(extra_constraints) > 0:
-                solver.add(*extra_constraints)
-        LOGGER.info("########## Quick Sampler: {}".format(n))
-        # pdb.set_trace()
-        if not self._bv_samples:
-            LOGGER.info('set up bvsampler {}'.format(exprs))
-            self._bv_samples = self._bv_sampler(solver, exprs[0])
-
-        # try:
-        #     return [next(self._bvsample)]
-        # except StopIteration:
-        #     return [None]
-
-        # LOGGER.info('sample', sample, type(sample))
-        # for r in existing_results:
-        #     self.update_PST_INSTRS().add(r)
-
-        # LOGGER.info "Batch eval existing: {}".format(self.update_PST_INSTRS())
-        result_values = []
-        # pdb.set_trace()
-        for _ in range(n):
-            # LOGGER.info('next_sample', next(sample), type(next(sample)))
-            try:
-                result = next(self._bv_samples)
-                LOGGER.info("BVSampler next: {}".format(result))
-                # while result in self.update_PST_INSTRS():
-                #     result = next(self._bvsample)
-                # LOGGER.info result
-                result_values.append(result)
-                # self.update_PST_INSTRS().add(result)
-            except StopIteration:
-                pdb.set_trace()
-                LOGGER.info("======== Stopped Iteration ========")
-                break
-        # LOGGER.info(list(result_values))
-        # LOGGER.info "Batch eval ends: {}".format(result_values)
-        if not result_values:
-            pdb.set_trace()
-            return [None]
-        LOGGER.info("BV Sampler: ", result_values)
-        print([[num for num in val.to_bytes(2, 'big')] for val in result_values])
-        return result_values

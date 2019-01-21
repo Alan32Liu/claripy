@@ -20,6 +20,9 @@ class ConstraintExpansionMixin(object):
 
         return results
 
+    def iterate(self, e):
+        return super(ConstraintExpansionMixin, self).iterate(e)
+
     def max(self, e, extra_constraints=(), exact=None, **kwargs):
         m = super(ConstraintExpansionMixin, self).max(e, extra_constraints=extra_constraints, exact=exact, **kwargs)
         if len(extra_constraints) == 0:

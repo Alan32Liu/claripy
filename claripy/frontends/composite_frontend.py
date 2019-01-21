@@ -285,6 +285,12 @@ class CompositeFrontend(ConstrainedFrontend):
         self._reabsorb_solver(ms)
         return r
 
+    def iterate(self, e):
+        ms = self._merged_solver_for(e=e)
+        r = ms.iterate(e)
+        self._reabsorb_solver(ms)
+        return r
+
     def batch_eval(self, exprs, n, extra_constraints=(), exact=None):
         self._ensure_sat(extra_constraints=extra_constraints)
 

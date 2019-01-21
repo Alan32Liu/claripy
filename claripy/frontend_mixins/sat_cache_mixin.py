@@ -62,6 +62,9 @@ class SatCacheMixin(object):
                 self._cached_satness = False
             raise
 
+    def iterate(self, e):
+        return super(SatCacheMixin, self).iterate(e)
+
     def batch_eval(self, e, n, extra_constraints=(), **kwargs):
         if self._cached_satness is False: raise UnsatError("cached unsat")
         try:
