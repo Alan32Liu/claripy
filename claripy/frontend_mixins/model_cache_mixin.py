@@ -285,7 +285,6 @@ class ModelCacheMixin(object):
         return results
 
     def batch_iterate(self, asts):
-        print(super(ModelCacheMixin, self))
         return super(ModelCacheMixin, self).batch_iterate(asts)
 
     def eval(self, e, n, **kwargs):

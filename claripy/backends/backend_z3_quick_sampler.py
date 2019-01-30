@@ -1,4 +1,3 @@
-import pdb
 import z3
 import random
 import logging
@@ -55,7 +54,6 @@ class BackendZ3QuickSampler(BackendZ3):
             if solver.check() != z3.sat:
                 LOGGER.info("**************No solution ****************")
                 break
-            print(solver)
             model = solver.model()
             result0 = model[result].as_long()
             solver.pop()
