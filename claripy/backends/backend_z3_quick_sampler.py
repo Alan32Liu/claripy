@@ -33,6 +33,7 @@ class BackendZ3QuickSampler(BackendZ3):
     def bv_sampler(self, solver, exprs):
         cinr = 0
         target = exprs[0]
+        assert len(exprs) == 1
         n = target.size()
         delta = z3.BitVec('delta',  n)
         result = z3.BitVec('result', n)
