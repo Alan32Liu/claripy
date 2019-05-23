@@ -120,7 +120,8 @@ class BackendZ3QuickSampler(BackendZ3):
             nresults = 0
             # From 0 to n has a low probability of finding a valid model
             # for i in range(n-1, -1, -1):
-            for i in range(0, n):
+            # for i in [(n-1)*(i%2)+(i//2*(-1) if i%2 else i//2) for i in range(n)]:
+            for i in range(n):
                 # Generating a result with the ith bit flipped
                 LOGGER.info('mutating bit ' + str(i))
                 solver.push()
