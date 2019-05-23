@@ -16,6 +16,7 @@ OTHER_COUNT = 0
 NO_MODEL_COUNT = 0
 DP_MODEL_COUNT = 0
 IS_MODEL_COUNT = 0
+FROM_FUZZING_TIME = 0
 FROM_FUZZING_COUNT = 0
 CINR = 0
 HIGH_FUZZING_COUNT = 0
@@ -50,6 +51,7 @@ class BackendZ3QuickSampler(BackendZ3):
             "No sigma_level1 COUNT: {}\n"
             "Is sigma_level1 COUNT: {}\n"
             "DP sigma_level1 COUNT: {}\n"
+            "sigma_levelN TIME :    {}\n"
             "sigma_levelN COUNT:    {}\n"
             "DP sigma_levelN COUNT: {}\n"
             "HL sigma_levelN COUNT: {}\n".format(
@@ -58,6 +60,7 @@ class BackendZ3QuickSampler(BackendZ3):
                 NO_MODEL_COUNT,
                 IS_MODEL_COUNT,
                 DP_MODEL_COUNT,
+                FROM_FUZZING_TIME,
                 FROM_FUZZING_COUNT,
                 CINR, HIGH_FUZZING_COUNT
             ))
@@ -65,7 +68,7 @@ class BackendZ3QuickSampler(BackendZ3):
     def bv_sampler(self, solver, exprs):
         global CON_SOL_TIME, CON_SOL_COUNT, OTHER_TIME, OTHER_COUNT,\
             NO_MODEL_COUNT, IS_MODEL_COUNT, DP_MODEL_COUNT, \
-            FROM_FUZZING_COUNT, CINR, HIGH_FUZZING_COUNT
+            FROM_FUZZING_COUNT, FROM_FUZZING_TIME, CINR, HIGH_FUZZING_COUNT
         # A collection of results (via constraint solving)
         #  and candidates (via bit flipping)
         # in the format of {value: level}
@@ -164,6 +167,7 @@ class BackendZ3QuickSampler(BackendZ3):
                 # to combine with the new result (e.g. sigma_b)
                 # When mutations is empty, this for loop will be skipped
                 for existing_result in mutations:
+                    pre = time.time()
                     # print("Combining with ", existing_result)
                     level = mutations[existing_result]
                     if level > MAX_LEVEL:
@@ -171,7 +175,8 @@ class BackendZ3QuickSampler(BackendZ3):
                         self.log_sampler_status()
                         continue
 
-                    candidate = (result0 ^ ((result0 ^ existing_result) | (result0 ^ new_result)))
+                    candidate = (result0 ^ ((result0 ^ existing_result) |
+                                            (result0 ^ new_result)))
                     LOGGER.info('yielding candidate ' + str(candidate) + ' at level ' + str(level))
 
                     # Try the next existing result in mutations if
@@ -185,7 +190,8 @@ class BackendZ3QuickSampler(BackendZ3):
                     new_mutations[candidate] = level + 1
                     nresults += 1
                     FROM_FUZZING_COUNT += 1
-
+                    post = time.time()
+                    FROM_FUZZING_TIME += (post - pre)
                     self.log_sampler_status()
                     yield candidate
                 mutations.update(new_mutations)
