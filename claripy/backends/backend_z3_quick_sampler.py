@@ -91,7 +91,9 @@ class BackendZ3QuickSampler(BackendZ3):
             # LOGGER.info('------------0--------------')
 
             solver.push()
-
+            for value in mutations:
+                LOGGER.error("************** Expensive to generate a new sigma ****************")
+                solver.add(result != value)
             solver.add(result ^ delta == guess)
             LOGGER.info('------------1--------------')
             import time
