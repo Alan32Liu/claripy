@@ -196,6 +196,7 @@ class BackendZ3QuickSampler(BackendZ3):
                     self.log_sampler_status()
                     yield candidate
                 mutations.update(new_mutations)
+                yield None  # all cheap results are generated
                 # LOGGER.info("============== Looping forever===========-")
             if not nresults:
                 break
