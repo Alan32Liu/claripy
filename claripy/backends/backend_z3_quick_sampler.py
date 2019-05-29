@@ -5,7 +5,7 @@ import logging
 from functools import reduce
 from .backend_z3 import BackendZ3
 
-MAX_LEVEL = 6
+MAX_LEVEL = 3
 LOGGER = logging.getLogger("claripy.backends.backend_z3_quick_sampler")
 LOGGER.setLevel(logging.ERROR)
 
@@ -113,7 +113,7 @@ class BackendZ3QuickSampler(BackendZ3):
 
             self.log_sampler_status()
             yield result0
-
+            yield None
             LOGGER.info('------------3--------------')
             LOGGER.info('solver: ' + str(solver))
             LOGGER.info('guess: ' + str(guess))
