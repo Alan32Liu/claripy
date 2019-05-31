@@ -76,6 +76,7 @@ class BackendZ3QuickSampler(BackendZ3):
         target = exprs[0]
         assert len(exprs) == 1
         n = target.size()
+        flippable_bits = [i for i in range(n)]
         delta = z3.BitVec('delta',  n)
         result = z3.BitVec('result', n)
 
@@ -123,7 +124,8 @@ class BackendZ3QuickSampler(BackendZ3):
             # From 0 to n has a low probability of finding a valid model
             # for i in range(n-1, -1, -1):
             # for i in [(n-1)*(i%2)+(i//2*(-1) if i%2 else i//2) for i in range(n)]:
-            for i in range(n):
+            while flippable_bits:
+                i = flippable_bits.pop(random.randint(0, len(flippable_bits)-1))
                 # Generating a result with the ith bit flipped
                 LOGGER.info('mutating bit ' + str(i))
                 solver.push()
