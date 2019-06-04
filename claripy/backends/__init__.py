@@ -6,7 +6,7 @@ import threading
 import logging
 l = logging.getLogger('claripy.backend')
 
-class Backend(object):
+class Backend:
     """
     Backends are Claripy's workhorses. Claripy exposes ASTs (claripy.ast.Base objects)
     to the world, but when actual computation has to be done, it pushes those
@@ -47,6 +47,7 @@ class Backend(object):
     _convert() to see if the backend can handle that type of object.
     """
 
+    __slots__ = ('_op_raw', '_op_expr', '_cache_objects', '_solver_required', '_tls', '_true_cache', '_false_cache', )
 
     def __init__(self, solver_required=None):
         self._op_raw = { }
@@ -57,6 +58,10 @@ class Backend(object):
         self._tls = threading.local()
         self._true_cache = weakref.WeakKeyDictionary()
         self._false_cache = weakref.WeakKeyDictionary()
+
+    @property
+    def is_smt_backend(self):
+        return False
 
     @property
     def _object_cache(self):
@@ -140,17 +145,18 @@ class Backend(object):
         :param save:    Save the result in the expression's object cache
         :return:        A backend object.
         """
-        ast_queue = [iter([expr])]
+        ast_queue = [[expr]]
         arg_queue = []
         op_queue = []
 
         try:
             while ast_queue:
-                try:
-                    args_iter = ast_queue[-1]
-                    ast = next(args_iter)
+                args_list = ast_queue[-1]
 
-                    if not isinstance(ast, Base):
+                if args_list:
+                    ast = args_list.pop(0)
+
+                    if type(ast) in {bool, int, str, float} or not isinstance(ast, Base):
                         converted = self._convert(ast)
                         arg_queue.append(converted)
                         continue
@@ -160,27 +166,26 @@ class Backend(object):
                                            "conversion on a child node" % (self, ast.op, ast.__class__.__name__))
 
                     if self._cache_objects:
-                        if ast._cache_key in self._object_cache:
-                            cached_obj = self._object_cache[ast._cache_key]
+                        cached_obj = self._object_cache.get(ast._cache_key, None)
+                        if cached_obj is not None:
                             arg_queue.append(cached_obj)
                             continue
 
+                    op_queue.append(ast)
                     if ast.op in self._op_expr:
-                        op_queue.append(ast)
-                        ast_queue.append(iter([]))
-
+                        ast_queue.append(None)
                     else:
-                        op_queue.append(ast)
-                        ast_queue.append(iter(ast.args))
+                        ast_queue.append(list(ast.args))
 
-                except StopIteration:
+                else:
                     ast_queue.pop()
 
                     if op_queue:
                         ast = op_queue.pop()
 
-                        if ast.op in self._op_expr:
-                            r = self._op_expr[ast.op](ast)
+                        op = self._op_expr.get(ast.op, None)
+                        if op is not None:
+                            r = op(ast)
 
                         else:
                             args = arg_queue[-len(ast.args):]
@@ -209,9 +214,10 @@ class Backend(object):
                 expr._errored.add(self)
             raise
 
-        assert len(op_queue) == 0, "op_queue is not empty"
-        assert len(ast_queue) == 0, "ast_queue is not empty"
-        assert len(arg_queue) == 1, ("arg_queue has unexpected length", len(arg_queue))
+        # Note: Uncomment the following assertions if you are touching the above implementation
+        # assert len(op_queue) == 0, "op_queue is not empty"
+        # assert len(ast_queue) == 0, "ast_queue is not empty"
+        # assert len(arg_queue) == 1, ("arg_queue has unexpected length", len(arg_queue))
 
         return arg_queue.pop()
 
@@ -323,7 +329,6 @@ class Backend(object):
         :param model_callback:      a function that will be executed with recovered models (if any)
         :return:                   A boolean.
         """
-
         #if self._solver_required and solver is None:
         #   raise BackendError("%s requires a solver for evaluation" % self.__class__.__name__)
         if not isinstance(e, Base):
@@ -612,6 +617,28 @@ class Backend(object):
         """
         raise BackendError("backend doesn't support max()")
 
+    def check_satisfiability(self, extra_constraints=(), solver=None, model_callback=None):
+        """
+        This function does a constraint check and returns the solvers state
+
+        :param solver:              The backend solver object.
+        :param extra_constraints:   Extra constraints (as ASTs) to add to s for this solve
+        :param model_callback:      a function that will be executed with recovered models (if any)
+        :return:                    'SAT', 'UNSAT', or 'UNKNOWN'
+        """
+        return self._check_satisfiability(extra_constraints=self.convert_list(extra_constraints), solver=solver, model_callback=model_callback)
+
+    def _check_satisfiability(self, extra_constraints=(), solver=None, model_callback=None):
+        """
+        This function does a constraint check and returns the solvers state
+
+        :param solver:              The backend solver object.
+        :param extra_constraints:   Extra constraints (as ASTs) to add to s for this solve
+        :param model_callback:      a function that will be executed with recovered models (if any)
+        :return:                    'SAT', 'UNSAT', or 'UNKNOWN'
+        """
+        return 'SAT' if self.satisfiable(extra_constraints=extra_constraints, solver=solver, model_callback=model_callback) else 'UNSAT'
+
     def satisfiable(self, extra_constraints=(), solver=None, model_callback=None):
         """
         This function does a constraint check and checks if the solver is in a sat state.
@@ -767,4 +794,6 @@ from .backend_z3_parallel import BackendZ3Parallel
 from .backend_z3_quick_sampler import BackendZ3QuickSampler
 from .backend_concrete import BackendConcrete
 from .backend_vsa import BackendVSA
+from .backend_smtlib import BackendSMTLibBase
+from .backend_smtlib_solvers import *
 from ..ast.base import Base

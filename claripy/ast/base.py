@@ -1,7 +1,6 @@
 import hashlib
 import itertools
 import logging
-import numbers
 import os
 import struct
 import weakref
@@ -11,8 +10,6 @@ try:
     import cPickle as pickle
 except ImportError:
     import pickle
-
-import ana
 
 l = logging.getLogger("claripy.ast")
 
@@ -49,8 +46,16 @@ def _make_name(name, size, explicit_name=False, prefix=""):
     else:
         return name
 
+def _d(h, cls, state):
+    """
+    This function is the deserializer for ASTs.
+    It exists to work around the fact that pickle will (normally) call __new__() with no arguments during deserialization.
+    For ASTs, this does not work.
+    """
+    op, args, length, variables, symbolic, annotations = state
+    return cls.__new__(cls, op, args, length=length, variables=variables, symbolic=symbolic, annotations=annotations, hash=h)
 
-class Base(ana.Storable):
+class Base:
     """
     This is the base class of all claripy ASTs. An AST tracks a tree of operations on arguments.
 
@@ -83,7 +88,7 @@ class Base(ana.Storable):
     MID_REPR=1
     FULL_REPR=2
 
-    def __new__(cls, op, args, add_variables=None, **kwargs):
+    def __new__(cls, op, args, add_variables=None, hash=None, **kwargs): #pylint:disable=redefined-builtin
         """
         This is called when you create a new Base object, whether directly or through an operation.
         It finalizes the arguments (see the _finalize function, above) and then computes
@@ -162,10 +167,10 @@ class Base(ana.Storable):
         if 'uc_alloc_depth' not in kwargs:
             kwargs['uc_alloc_depth'] = None
 
-        if 'annotations' not in kwargs:
+        if 'annotations' not in kwargs or kwargs['annotations'] is None:
             kwargs['annotations'] = ()
 
-        h = Base._calc_hash(op, a_args, kwargs)
+        h = Base._calc_hash(op, a_args, kwargs) if hash is None else hash
         self = cls._hash_cache.get(h, None)
         if self is None:
             self = super(Base, cls).__new__(cls)
@@ -178,6 +183,11 @@ class Base(ana.Storable):
         #        raise Exception("CRAP -- hash collision")
 
         return self
+
+    def __reduce__(self):
+        # HASHCONS: these attributes key the cache
+        # BEFORE CHANGING THIS, SEE ALL OTHER INSTANCES OF "HASHCONS" IN THIS FILE
+        return _d, (self._hash, self.__class__, (self.op, self.args, self.length, self.variables, self.symbolic, self.annotations))
 
     def __init__(self, *args, **kwargs):
         pass
@@ -196,17 +206,21 @@ class Base(ana.Storable):
         (hash(-1) == hash(-2), for example)
         """
         args_tup = tuple(a if type(a) in (int, float) else hash(a) for a in args)
-        to_hash = (op, args_tup, keywords['symbolic'], hash(keywords['variables']), str(keywords.get('length', None)),
-                   hash(keywords.get('annotations', None)))
+        # HASHCONS: these attributes key the cache
+        # BEFORE CHANGING THIS, SEE ALL OTHER INSTANCES OF "HASHCONS" IN THIS FILE
+        to_hash = (
+            op, args_tup,
+            str(keywords.get('length', None)),
+            hash(keywords['variables']),
+            keywords['symbolic'],
+            hash(keywords.get('annotations', None)),
+        )
 
         # Why do we use md5 when it's broken? Because speed is more important
         # than cryptographic integrity here. Then again, look at all those
         # allocations we're doing here... fast python is painful.
         hd = hashlib.md5(pickle.dumps(to_hash, -1)).digest()
         return md5_unpacker.unpack(hd)[0] # 64 bits
-
-    def _get_hashables(self):
-        return self.op, tuple(str(a) if isinstance(a, numbers.Number) else hash(a) for a in self.args), self.symbolic, hash(self.variables), str(self.length)
 
     #pylint:disable=attribute-defined-outside-init
     def __a_init__(self, op, args, variables=None, symbolic=None, length=None, simplified=0, errored=None, eager_backends=None, uninitialized=None, uc_alloc_depth=None, annotations=None, encoded_name=None, depth=None, args_have_annotations=None):  #pylint:disable=unused-argument
@@ -216,12 +230,19 @@ class Base(ana.Storable):
         We use this instead of ``__init__`` due to python's undesirable behavior w.r.t. automatically calling it on
         return from ``__new__``.
         """
+
+        # HASHCONS: these attributes key the cache
+        # BEFORE CHANGING THIS, SEE ALL OTHER INSTANCES OF "HASHCONS" IN THIS FILE
         self.op = op
         self.args = args if type(args) is tuple else tuple(args)
         self.length = length
         self.variables = frozenset(variables) if type(variables) is not frozenset else variables
         self.symbolic = symbolic
+        self.annotations = annotations
+
+
         self.depth = depth if depth is not None else 1
+
         self._eager_backends = eager_backends
         self._cached_encoded_name = encoded_name
 
@@ -234,9 +255,8 @@ class Base(ana.Storable):
 
         self._uninitialized = uninitialized
         self._uc_alloc_depth = uc_alloc_depth
-        self.annotations = annotations
 
-        if not annotations and args_have_annotations is False:
+        if not annotations and not args_have_annotations:
             self._uneliminatable_annotations = frozenset()
             self._relocatable_annotations = frozenset()
         else:
@@ -256,24 +276,6 @@ class Base(ana.Storable):
 
     #pylint:enable=attribute-defined-outside-init
 
-    def make_uuid(self, uuid=None):
-        """
-        This overrides the default ANA uuid with the hash of the AST. UUID is slow, and we'll soon replace it from ANA
-        itself, and this will go away.
-
-        :returns: a string representation of the AST hash.
-        """
-        u = getattr(self, '_ana_uuid', None)
-        if u is None:
-            u = str(self._hash) if uuid is None else uuid
-            ana.get_dl().uuid_cache[u] = self
-            setattr(self, '_ana_uuid', u)
-        return u
-
-    @property
-    def uuid(self):
-        return self.ana_uuid
-
     def __hash__(self):
         return self._hash
 
@@ -291,25 +293,6 @@ class Base(ana.Storable):
         return self._cached_encoded_name
 
     #
-    # Serialization support
-    #
-
-    def _ana_getstate(self):
-        """
-        Support for ANA serialization.
-        """
-        return self.op, self.args, self.length, self.variables, self.symbolic, self._hash, self.annotations, self.depth
-
-    def _ana_setstate(self, state):  # pylint:disable=arguments-differ
-        """
-        Support for ANA deserialization.
-        """
-        op, args, length, variables, symbolic, h, annotations, depth = state
-        Base.__a_init__(self, op, args, length=length, variables=variables, symbolic=symbolic, annotations=annotations, depth=depth)
-        self._hash = h  # pylint: disable=attribute-defined-outside-init
-        Base._hash_cache[h] = self
-
-    #
     # Collapsing and simplification
     #
 
@@ -320,12 +303,27 @@ class Base(ana.Storable):
     #            yield backend.convert(a)
 
     def make_like(self, *args, **kwargs):
+        op, expr_args = args
+        if kwargs.pop("simplify", False) is True:
+            # Try to simplify the expression again
+            simplified = simplifications.simpleton.simplify(op, expr_args)
+        else:
+            simplified = None
+        if simplified is not None:
+            op = simplified.op
+
         all_operations = operations.leaf_operations_symbolic | {'union'}
         if 'annotations' not in kwargs: kwargs['annotations'] = self.annotations
-        if 'variables' not in kwargs and self.op in all_operations: kwargs['variables'] = self.variables
+        if 'variables' not in kwargs and op in all_operations: kwargs['variables'] = self.variables
         if 'uninitialized' not in kwargs: kwargs['uninitialized'] = self._uninitialized
-        if 'symbolic' not in kwargs and self.op in all_operations: kwargs['symbolic'] = self.symbolic
-        return type(self)(*args, **kwargs)
+        if 'symbolic' not in kwargs and op in all_operations: kwargs['symbolic'] = self.symbolic
+        if simplified is None:
+            # Cannot simplify the expression anymore
+            return type(self)(*args, **kwargs)
+        else:
+            # The expression is simplified
+            r = type(self)(*(op, simplified.args), **kwargs)
+            return r
 
     def _rename(self, new_name):
         if self.op not in { 'BVS', 'BoolS', 'FPS' }:
@@ -425,10 +423,13 @@ class Base(ana.Storable):
     def _type_name(self):
         return self.__class__.__name__
 
-    def __repr__(self, inner=False, max_depth=None, explicit_length=False):  # pylint:disable=unused-argument
-        return '<AST something>' if WORKER else self.shallow_repr(max_depth=max_depth, explicit_length=explicit_length)
+    def __repr__(self, inner=False, max_depth=None, explicit_length=False):
+        if WORKER:
+            return '<AST something>'
+        else:
+            return self.shallow_repr(max_depth=max_depth, explicit_length=explicit_length, inner=inner)
 
-    def shallow_repr(self, max_depth=8, explicit_length=False, details=LITE_REPR):
+    def shallow_repr(self, max_depth=8, explicit_length=False, details=LITE_REPR, inner=False):
         """
         Returns a string representation of this AST, but with a maximum depth to
         prevent floods of text being printed.
@@ -485,7 +486,10 @@ class Base(ana.Storable):
         assert len(ast_queue) == 0, "arg_queue is not empty"
         assert len(arg_queue) == 1, ("repr_queue has unexpected length", len(arg_queue))
 
-        return "<{} {}>".format(self._type_name(), arg_queue.pop())
+        if not inner:
+            return "<{} {}>".format(self._type_name(), arg_queue.pop())
+        else:
+            return arg_queue.pop()
 
     @staticmethod
     def _op_repr(op, args, inner, length, details):
@@ -956,7 +960,7 @@ class Base(ana.Storable):
 
     def _first_backend(self, what):
         for b in backends._all_backends:
-            if b in self._errored:
+            if b in self._errored or b.is_smt_backend:
                 continue
 
             try: return getattr(b, what)(self)
@@ -976,6 +980,7 @@ class Base(ana.Storable):
 
     @property
     def concrete(self):
+        # import ipdb; ipdb.set_trace()
         return backends.concrete.handles(self)
 
     @property
@@ -1040,3 +1045,4 @@ from .. import operations
 from ..backend_manager import backends
 from ..ast.bool import If, Not, BoolS
 from ..ast.bv import BV
+from .. import simplifications

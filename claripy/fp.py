@@ -1,5 +1,9 @@
+import decimal
 import functools
+import math
 import struct
+from decimal import Decimal
+from enum import Enum
 
 from .errors import ClaripyOperationError
 from .backend_object import BackendObject
@@ -26,28 +30,37 @@ def normalize_types(f):
 
     return normalize_helper
 
-class RM(str):
+
+class RM(Enum):
+    # see https://en.wikipedia.org/wiki/IEEE_754#Rounding_rules
+    RM_NearestTiesEven = 'RM_RNE'
+    RM_NearestTiesAwayFromZero = 'RM_RNA'
+    RM_TowardsZero = 'RM_RTZ'
+    RM_TowardsPositiveInf = 'RM_RTP'
+    RM_TowardsNegativeInf = 'RM_RTN'
+
     @staticmethod
     def default():
-        return RM_RNE
+        return RM.RM_NearestTiesEven
 
-    @staticmethod
-    def from_name(name):
+    def pydecimal_equivalent_rounding_mode(self):
         return {
-            'RM_RNE': RM_RNE,
-            'RM_RNA': RM_RNA,
-            'RM_RTP': RM_RTP,
-            'RM_RTN': RM_RTN,
-            'RM_RTZ': RM_RTZ,
-        }[name]
+            RM.RM_TowardsPositiveInf:      decimal.ROUND_CEILING,
+            RM.RM_TowardsNegativeInf:      decimal.ROUND_FLOOR,
+            RM.RM_TowardsZero:             decimal.ROUND_DOWN,
+            RM.RM_NearestTiesEven:         decimal.ROUND_HALF_EVEN,
+            RM.RM_NearestTiesAwayFromZero: decimal.ROUND_UP,
+        }[self]
 
-RM_RNE = RM('RNE')
-RM_RNA = RM('RNA')
-RM_RTP = RM('RTP')
-RM_RTN = RM('RTN')
-RM_RTZ = RM('RTZ')
 
-class FSort(object):
+RM_NearestTiesEven          = RM.RM_NearestTiesEven
+RM_NearestTiesAwayFromZero  = RM.RM_NearestTiesAwayFromZero
+RM_TowardsZero              = RM.RM_TowardsZero
+RM_TowardsPositiveInf       = RM.RM_TowardsPositiveInf
+RM_TowardsNegativeInf       = RM.RM_TowardsNegativeInf
+
+
+class FSort:
     def __init__(self, name, exp, mantissa):
         self.name = name
         self.exp = exp
@@ -227,6 +240,21 @@ class FPV(BackendObject):
         return 'FPV({:f}, {})'.format(self.value, self.sort)
 
 def fpToFP(a1, a2, a3=None):
+    """
+    Returns a FP AST and has three signatures:
+
+        fpToFP(ubvv, sort)
+            Returns a FP AST whose value is the same as the unsigned BVV `a1`
+            and whose sort is `a2`.
+
+        fpToFP(rm, fpv, sort)
+            Returns a FP AST whose value is the same as the floating point `a2`
+            and whose sort is `a3`.
+
+        fpToTP(rm, sbvv, sort)
+            Returns a FP AST whose value is the same as the signed BVV `a2` and
+            whose sort is `a3`.
+    """
     if isinstance(a1, BVV) and isinstance(a2, FSort):
         sort = a2
         if sort == FSORT_FLOAT:
@@ -252,10 +280,20 @@ def fpToFP(a1, a2, a3=None):
         raise ClaripyOperationError("unknown types passed to fpToFP")
 
 def fpToFPUnsigned(_rm, thing, sort):
+    """
+    Returns a FP AST whose value is the same as the unsigned BVV `thing` and
+    whose sort is `sort`.
+    """
     # thing is a BVV
     return FPV(float(thing.value), sort)
 
 def fpToIEEEBV(fpv):
+    """
+    Interprets the bit-pattern of the IEEE754 floating point number `fpv` as a
+    bitvector.
+
+    :return:    A BV AST whose bit-pattern is the same as `fpv`
+    """
     if fpv.sort == FSORT_FLOAT:
         pack, unpack = 'f', 'I'
     elif fpv.sort == FSORT_DOUBLE:
@@ -273,6 +311,13 @@ def fpToIEEEBV(fpv):
     return BVV(unpacked, fpv.sort.length)
 
 def fpFP(sgn, exp, mantissa):
+    """
+    Concatenates the bitvectors `sgn`, `exp` and `mantissa` and returns the
+    corresponding IEEE754 floating point number.
+
+    :return:    A FP AST whose bit-pattern is the same as the concatenated
+                bitvector
+    """
     concatted = Concat(sgn, exp, mantissa)
     sort = FSort.from_size(concatted.size())
 
@@ -294,61 +339,108 @@ def fpFP(sgn, exp, mantissa):
 
 def fpToSBV(rm, fp, size):
     try:
-        if rm == RM_RTZ:
-            return BVV(int(fp.value), size)
-        elif rm == RM_RNE:
-            return BVV(int(round(fp.value)), size)
-        else:
-            raise ClaripyOperationError("todo")
+        rounding_mode = rm.pydecimal_equivalent_rounding_mode()
+        val = int(Decimal(fp.value).to_integral_value(rounding_mode))
+        return BVV(val, size)
+
     except (ValueError, OverflowError):
         return BVV(0, size)
+    except Exception as ex:
+        import ipdb; ipdb.set_trace()
+        print("Unhandled error during floating point rounding! {}".format(ex))
+        raise
 
 def fpToUBV(rm, fp, size):
     # todo: actually make unsigned
     try:
-        if rm == RM_RTZ:
-            return BVV(int(fp.value), size)
-        elif rm == RM_RNE:
-            return BVV(int(round(fp.value)), size)
-        else:
-            raise ClaripyOperationError("todo")
+        rounding_mode = rm.pydecimal_equivalent_rounding_mode()
+        val = int(Decimal(fp).to_integral_value(rounding_mode))
+        assert val & ((1 << size) - 1) == val, "Rounding produced values outside the BV range! rounding {} with rounding mode {} produced {}".format
+        if val < 0:
+            val = (1 << size) + val
+        return BVV(val, size)
+
     except (ValueError, OverflowError):
         return BVV(0, size)
 
 def fpEQ(a, b):
+    """
+    Checks if floating point `a` is equal to floating point `b`.
+    """
     return a == b
 
 def fpNE(a, b):
+    """
+    Checks if floating point `a` is not equal to floating point `b`.
+    """
     return a != b
 
 def fpGT(a, b):
+    """
+    Checks if floating point `a` is greater than floating point `b`.
+    """
     return a > b
 
 def fpGEQ(a, b):
+    """
+    Checks if floating point `a` is greater than or equal to floating point `b`.
+    """
     return a >= b
 
 def fpLT(a, b):
+    """
+    Checks if floating point `a` is less than floating point `b`.
+    """
     return a < b
 
 def fpLEQ(a, b):
+    """
+    Checks if floating point `a` is less than or equal to floating point `b`.
+    """
     return a <= b
 
 def fpAbs(x):
+    """
+    Returns the absolute value of the floating point `x`. So:
+
+        a = FPV(-3.2, FSORT_DOUBLE)
+        b = fpAbs(a)
+        b is FPV(3.2, FSORT_DOUBLE)
+    """
     return abs(x)
 
 def fpNeg(x):
+    """
+    Returns the additive inverse of the floating point `x`. So:
+
+        a = FPV(3.2, FSORT_DOUBLE)
+        b = fpAbs(a)
+        b is FPV(-3.2, FSORT_DOUBLE)
+    """
     return -x
 
 def fpSub(_rm, a, b):
+    """
+    Returns the subtraction of the floating point `a` by the floating point `b`.
+    """
     return a - b
 
 def fpAdd(_rm, a, b):
+    """
+    Returns the addition of two floating point numbers, `a` and `b`.
+    """
     return a + b
 
 def fpMul(_rm, a, b):
+    """
+    Returns the multiplication of two floating point numbers, `a` and `b`.
+    """
     return a * b
 
 def fpDiv(_rm, a, b):
+    """
+    Returns the division of the floating point `a` by the floating point `b`.
+    """
     return a / b
 
 from .bv import BVV, Concat

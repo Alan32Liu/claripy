@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # pylint: disable=F0401,W0401,W0603,
 
+__version__ = (8, 19, 4, 5)
+
 if bytes is str:
     raise Exception("This module is designed for python 3 only. Please install an older version to use python 2.")
 
@@ -19,14 +21,6 @@ from . import ops as _all_operations
 from . import backends as _backends_module
 from .backends import Backend
 from .backend_object import BackendObject
-
-#
-# connect to ANA
-#
-
-import ana
-if os.environ.get('REMOTE', False):
-    ana.set_dl(ana.MongoDataLayer(()))
 
 
 #
@@ -47,6 +41,7 @@ from .ast.base import *
 from .ast.bv import *
 from .ast.fp import *
 from .ast.bool import *
+from .ast.strings import *
 from . import ast
 del BV
 del Bool
