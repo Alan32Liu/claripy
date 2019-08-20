@@ -15,7 +15,7 @@ class Solver(
     frontend_mixins.SimplifyHelperMixin,
     frontends.FullFrontend
 ):
-    def __init__(self, backend=backends.z3, **kwargs):
+    def __init__(self, backend=backends.QS, **kwargs):
         super(Solver, self).__init__(backend, **kwargs)
 
 class SolverCacheless(
