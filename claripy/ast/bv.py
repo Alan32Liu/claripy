@@ -44,6 +44,8 @@ class BV(Bits):
             11111111111111111111111111111100
     """
 
+    __slots__ = ()
+
     def chop(self, bits=1):
         """
         Chops a BV into consecutive sub-slices. Obviously, the length of this BV must be a multiple of bits.
@@ -203,14 +205,13 @@ def BVS(name, size, min=None, max=None, stride=None, uninitialized=False,  #pyli
     if stride == 0 and max != min:
         raise ClaripyValueError("BVSes of stride 0 should have max == min")
 
-    encoded_name = None
     if type(name) is bytes:
-        encoded_name = name
         name = name.decode()
     if type(name) is not str:
         raise TypeError("Name value for BVS must be a str, got %r" % type(name))
 
     n = _make_name(name, size, False if explicit_name is None else explicit_name)
+    encoded_name = n.encode()
 
     if not discrete_set:
         discrete_set_max_card = None

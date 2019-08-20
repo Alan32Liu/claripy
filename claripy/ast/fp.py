@@ -13,6 +13,9 @@ class FP(Bits):
     :ivar length:   The length of this value
     :ivar sort:     The sort of this value, usually either FSORT_FLOAT or FSORT_DOUBLE
     """
+
+    __slots__ = ()
+
     def to_fp(self, sort, rm=None):
         """
         Convert this float to a different sort
@@ -129,6 +132,8 @@ fpGT = operations.op('fpGT', (FP, FP), Bool, bound=False, extra_check=_fp_cmp_ch
 fpGEQ = operations.op('fpGEQ', (FP, FP), Bool, bound=False, extra_check=_fp_cmp_check)
 fpLT = operations.op('fpLT', (FP, FP), Bool, bound=False, extra_check=_fp_cmp_check)
 fpLEQ = operations.op('fpLEQ', (FP, FP), Bool, bound=False, extra_check=_fp_cmp_check)
+fpIsNaN = operations.op('fpIsNaN', (FP,), Bool, bound=False)
+fpIsInf = operations.op('fpIsInf', (FP,), Bool, bound=False)
 
 #
 # unbound floating point arithmetic
@@ -170,3 +175,6 @@ FP.__rsub__ = operations.reversed_op(FP.__sub__)
 FP.__rmul__ = operations.reversed_op(FP.__mul__)
 FP.__rdiv__ = operations.reversed_op(FP.__div__)
 FP.__rtruediv__ = operations.reversed_op(FP.__div__)
+
+FP.isNaN = fpIsNaN
+FP.isInf = fpIsInf

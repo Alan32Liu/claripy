@@ -3,6 +3,7 @@ import numbers
 
 from .errors import ClaripyOperationError, ClaripyTypeError, ClaripyZeroDivisionError
 from .backend_object import BackendObject
+from . import debug as _d
 
 def compare_bits(f):
     @functools.wraps(f)
@@ -28,8 +29,9 @@ def compare_bits_0_length(f):
 def normalize_types(f):
     @functools.wraps(f)
     def normalize_helper(self, o):
-        if hasattr(o, '__module__') and o.__module__ == 'z3':
-            raise ValueError("this should no longer happen")
+        if _d._DEBUG:
+            if hasattr(o, '__module__') and o.__module__ == 'z3':
+                raise ValueError("this should no longer happen")
         if isinstance(o, numbers.Number):
             o = BVV(o, self.bits)
         if isinstance(self, numbers.Number):
@@ -41,19 +43,21 @@ def normalize_types(f):
 
     return normalize_helper
 
+
 class BVV(BackendObject):
     __slots__ = [ 'bits', '_value', 'mod' ]
 
     def __init__(self, value, bits):
-        if bits < 0 or not isinstance(bits, numbers.Number) or not isinstance(value, numbers.Number):
-            raise ClaripyOperationError("BVV needs a non-negative length and an int value")
+        if _d._DEBUG:
+            if bits < 0 or not isinstance(bits, numbers.Number) or not isinstance(value, numbers.Number):
+                raise ClaripyOperationError("BVV needs a non-negative length and an int value")
 
-        if bits == 0 and value not in (0, "", None):
-            raise ClaripyOperationError("Zero-length BVVs cannot have a meaningful value.")
+            if bits == 0 and value not in (0, "", None):
+                raise ClaripyOperationError("Zero-length BVVs cannot have a meaningful value.")
 
         self.bits = bits
         self._value = 0
-        self.mod = 2**bits
+        self.mod = 1<<bits
         self.value = value
 
     def __hash__(self):
@@ -64,7 +68,7 @@ class BVV(BackendObject):
 
     def __setstate__(self, s):
         self.bits = s[0]
-        self.mod = 2**self.bits
+        self.mod = 1<<self.bits
         self.value = s[1]
 
     @property

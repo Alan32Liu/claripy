@@ -14,6 +14,8 @@ class String(Bits):
     operations to construct more complicated expressions.
     """
 
+    __slots__ = ('string_length')
+
     # Identifier used by composite solver in order to identify if a certain constraints contains
     # variables of type string... In this case cvc4 would handle the solving part.
     #
@@ -62,8 +64,8 @@ class String(Bits):
         """
         Replace the first occurence of str_to_replace with replacement
 
-        :param String str_to_replace: pattern that has to be replaced
-        :param String replacement: replacement pattern
+        :param claripy.ast.String str_to_replace: pattern that has to be replaced
+        :param claripy.ast.String replacement: replacement pattern
         """
         return StrReplace(self, str_to_replace, replacement)
 

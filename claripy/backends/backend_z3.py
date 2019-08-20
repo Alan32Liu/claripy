@@ -24,6 +24,11 @@ try:
 except ImportError:
     _is_pypy = False
 
+def z3_expr_to_smt2(f, status="unknown", name="benchmark", logic=""):
+      # from https://stackoverflow.com/a/14629021/9719920
+      v = (z3.Ast * 0)()
+      return z3.Z3_benchmark_to_smtlib_string(f.ctx_ref(), name, logic, status, "", 0, v, f.as_ast())
+
 def _add_memory_pressure(p):
     """
     PyPy's garbage collector is not aware of memory uses happening inside native code. When performing memory-intensive
@@ -45,6 +50,9 @@ def _add_memory_pressure(p):
 solve_count = 0
 
 supports_fp = hasattr(z3, 'fpEQ')
+
+# you can toggle this flag if you want. I don't think it matters
+#z3.set_param('rewriter.hi_fp_unspecified', 'true')
 
 #
 # Utility functions
@@ -69,24 +77,14 @@ def _raw_caller(f):
     return raw_caller
 
 def _z3_decl_name_str(ctx, decl):
-    # reimplementation of Z3_get_symbol_string to not try to unicode-decode
-    lib = z3.lib()
-
-    decl_name = lib.Z3_get_decl_name(ctx, decl)
-    err = lib.Z3_get_error_code(ctx)
-    if err != z3.Z3_OK:
-        raise z3.Z3Exception(lib.Z3_get_error_msg(ctx, err))
-
-    symbol_name = lib.Z3_get_symbol_string(ctx, decl_name)
-    err = lib.Z3_get_error_code(ctx)
-    if err != z3.Z3_OK:
-        raise z3.Z3Exception(z3.lib().Z3_get_error_msg(ctx, err))
+    decl_name = z3.Z3_get_decl_name(ctx, decl)
+    symbol_name = z3.Z3_get_symbol_string_bytes(ctx, decl_name)
     return symbol_name
 
 
 class SmartLRUCache(LRUCache):
     def __init__(self, maxsize, getsizeof=None, evict=None):
-        LRUCache.__init__(self, maxsize, getsizeof)
+        LRUCache.__init__(self, maxsize, getsizeof=getsizeof)
         self._evict = evict
 
     def popitem(self):
@@ -483,22 +481,7 @@ class BackendZ3(Backend):
 
         elif op_name == 'UNINTERPRETED':
             mystery_name = z3.Z3_get_symbol_string(ctx, z3.Z3_get_decl_name(ctx, decl))
-            args = [ ]
-
-            #
-            # TODO: DEPRECATED: remove the following after some reasonable amount of time.
-            #
-
-            if mystery_name == 'bvsmod_i':
-                l.error("Your Z3 is out of date. Please update angr-only-z3-custom or future releases of claripy will fail.")
-                op_name = '__mod__'
-                decl_num = z3.Z3_OP_BSMOD
-            elif mystery_name == 'bvsdiv_i':
-                l.error("Your Z3 is out of date. Please update angr-only-z3-custom or future releases of claripy will fail.")
-                op_name = 'SDiv'
-                decl_num = z3.Z3_OP_BSDIV
-            else:
-                l.error("Mystery operation %s in BackendZ3._abstract_internal. Please report this.", mystery_name)
+            l.error("Mystery operation %s in BackendZ3._abstract_internal. Please report this.", mystery_name)
         elif op_name == 'Extract':
             hi = z3.Z3_get_decl_int_parameter(ctx, decl, 0)
             lo = z3.Z3_get_decl_int_parameter(ctx, decl, 1)
@@ -562,19 +545,53 @@ class BackendZ3(Backend):
         op_name = op_map[z3_op_nums[decl_num]]
 
         if op_name == 'BitVecVal':
-            if z3.Z3_get_numeral_uint64(ctx, ast, self._c_uint64_p):
-                return self._c_uint64_p.contents.value
-            else:
-                bv_num = int(z3.Z3_get_numeral_string(ctx, ast))
-                return bv_num
+            return self._abstract_bv_val(ctx, ast)
         elif op_name == 'True':
             return True
         elif op_name == 'False':
             return False
         elif op_name in ('FPVal', 'MinusZero', 'MinusInf', 'PlusZero', 'PlusInf', 'NaN'):
             return self._abstract_fp_val(ctx, ast, op_name)
+        elif op_name == 'Concat':
+            # Quirk in how z3 might handle NaN encodings - it will not give us a fully evaluated model
+            # https://github.com/Z3Prover/z3/issues/518
+            # this case will be triggered if the z3 rewriter.hi_fp_unspecified is set to true
+            nargs = z3.Z3_get_app_num_args(ctx, ast)
+            res = 0
+            for i in range(nargs):
+                arg_ast = z3.Z3_get_app_arg(ctx, ast, i)
+                arg_decl = z3.Z3_get_app_decl(ctx, arg_ast)
+                arg_decl_num = z3.Z3_get_decl_kind(ctx, arg_decl)
+                arg_size = z3.Z3_get_bv_sort_size(ctx, z3.Z3_get_sort(ctx, arg_ast))
+
+                neg = False
+                if arg_decl_num == z3.Z3_OP_BNEG:
+                    arg_ast = z3.Z3_get_app_arg(ctx, arg_ast, 0)
+                    arg_decl = z3.Z3_get_app_decl(ctx, arg_ast)
+                    arg_decl_num = z3.Z3_get_decl_kind(ctx, arg_decl)
+                    neg = True
+                if arg_decl_num != z3.Z3_OP_BNUM:
+                    raise BackendError("Weird z3 model")
+
+                arg_int = self._abstract_bv_val(ctx, arg_ast)
+                if neg:
+                    arg_int = (1<<arg_size)-arg_int
+                res <<= arg_size
+                res |= arg_int
+            return res
+        elif op_name == 'fpToIEEEBV':
+            # Another quirk in the way z3 might handle nan encodings. see above
+            # this case will be triggered if the z3 rewriter.hi_fp_unspecified is set to false
+            arg_ast = z3.Z3_get_app_arg(ctx, ast, 0)
+            return self._abstract_fp_encoded_val(ctx, arg_ast)
         else:
             raise BackendError("Unable to abstract Z3 object to primitive")
+
+    def _abstract_bv_val(self, ctx, ast):
+        if z3.Z3_get_numeral_uint64(ctx, ast, self._c_uint64_p):
+            return self._c_uint64_p.contents.value
+        else:
+            return int(z3.Z3_get_numeral_string(ctx, ast))
 
     def _abstract_fp_val(self, ctx, ast, op_name):
         if op_name == 'FPVal':
@@ -602,6 +619,47 @@ class BackendZ3(Backend):
     # Factored out so subclasses can decide to use z3.Optimize instead
     def _solver(self):
         return z3.Solver(ctx=self._context)
+
+    def _abstract_fp_encoded_val(self, ctx, ast):
+        decl = z3.Z3_get_app_decl(ctx, ast)
+        decl_num = z3.Z3_get_decl_kind(ctx, decl)
+        op_name = op_map[z3_op_nums[decl_num]]
+        sort = z3.Z3_get_sort(ctx, ast)
+        ebits = z3.Z3_fpa_get_ebits(ctx, sort)
+        sbits = z3.Z3_fpa_get_sbits(ctx, sort) - 1  # includes sign bit
+
+        if op_name == 'FPVal':
+            # TODO: do better than this
+            fp_mantissa = int(z3.Z3_fpa_get_numeral_significand_string(ctx, ast))
+            fp_exp = int(z3.Z3_fpa_get_numeral_exponent_string(ctx, ast, True))
+            fp_sign_c = ctypes.c_int()
+            z3.Z3_fpa_get_numeral_sign(ctx, ast, ctypes.byref(fp_sign_c))
+            fp_sign = 1 if fp_sign_c.value != 0 else 0
+        elif op_name == 'MinusZero':
+            fp_sign = 1
+            fp_exp = 0
+            fp_mantissa = 0
+        elif op_name == 'MinusInf':
+            fp_sign = 1
+            fp_exp = (1<<ebits) - 1
+            fp_mantissa = 0
+        elif op_name == 'PlusZero':
+            fp_sign = 0
+            fp_exp = 0
+            fp_mantissa = 0
+        elif op_name == 'PlusInf':
+            fp_sign = 0
+            fp_exp = (1<<ebits) - 1
+            fp_mantissa = 0
+        elif op_name == 'NaN':
+            fp_sign = 0
+            fp_exp = (1<<ebits) - 1
+            fp_mantissa = 1
+        else:
+            raise BackendError("Called _abstract_fp_val with unknown type")
+
+        value = (fp_sign << (ebits + sbits)) | (fp_exp << sbits) | fp_mantissa
+        return value
 
     def solver(self, timeout=None):
         if not self.reuse_z3_solver or getattr(self._tls, 'solver', None) is None:
@@ -1050,6 +1108,14 @@ class BackendZ3(Backend):
     @condom
     def _op_raw_fpEQ(self, a, b):
         return z3.BoolRef(z3.Z3_mk_fpa_eq(self._context.ref(), a.as_ast(), b.as_ast()), self._context)
+
+    @condom
+    def _op_raw_fpIsNaN(self, a):
+        return z3.BoolRef(z3.Z3_mk_fpa_is_nan(self._context.ref(), a.as_ast()), self._context)
+
+    @condom
+    def _op_raw_fpIsInf(self, a):
+        return z3.BoolRef(z3.Z3_mk_fpa_is_inf(self._context.ref(), a.as_ast()), self._context)
 
     @condom
     def _op_raw_fpFP(self, sgn, exp, sig):

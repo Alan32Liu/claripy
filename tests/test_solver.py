@@ -1,5 +1,6 @@
 import claripy
 import nose
+import math
 
 import logging
 l = logging.getLogger('claripy.test.solver')
@@ -321,17 +322,20 @@ def raw_combine(solver_type, reuse_z3_solver):
     nose.tools.assert_equal(len(s30.combine([s10]).constraints), 2)
 
 def test_composite_solver_with_strings():
-    s = claripy.SolverComposite(
-        template_solver_string=claripy.SolverCompositeChild(backend=claripy.backend_manager.backends.smtlib_cvc4))
-    x = claripy.BVS("x", 32)
-    y = claripy.BVS("y", 32)
-    z = claripy.BVS("z", 32)
-    str_1 = claripy.StringS("sym_str_1", 1024)
-    c = claripy.And(x == 1, y == 2, z == 3, str_1 == claripy.StringV("cavallo"))
-    s.add(c)
-    nose.tools.assert_equal(len(s._solver_list), 4)
-    nose.tools.assert_true(s.satisfiable())
-    nose.tools.assert_equal(list(s.eval(str_1, 1)), ["cavallo"])
+    try:
+        s = claripy.SolverComposite(
+            template_solver_string=claripy.SolverCompositeChild(backend=claripy.backend_manager.backends.smtlib_cvc4))
+        x = claripy.BVS("x", 32)
+        y = claripy.BVS("y", 32)
+        z = claripy.BVS("z", 32)
+        str_1 = claripy.StringS("sym_str_1", 1024)
+        c = claripy.And(x == 1, y == 2, z == 3, str_1 == claripy.StringV("cavallo"))
+        s.add(c)
+        nose.tools.assert_equal(len(s._solver_list), 4)
+        nose.tools.assert_true(s.satisfiable())
+        nose.tools.assert_equal(list(s.eval(str_1, 1)), ["cavallo"])
+    except claripy.errors.MissingSolverError:
+        raise nose.SkipTest()
 
 
 def test_composite_solver():
@@ -556,9 +560,27 @@ def test_zero_division_in_cache_mixin():
     s.add(denum == 3)
     assert not s.satisfiable()
 
+def test_nan():
+    a = claripy.FPS('a', claripy.FSORT_FLOAT)
+    b = claripy.BVS('b', 32)
+
+    s1 = claripy.Solver()
+    s1.add((a + 1).isNaN())
+    res = s1.eval(a, 1)[0]
+    assert math.isnan(res)
+
+    s2 = claripy.Solver()
+    s2.add(b.raw_to_fp().isNaN())
+    res = s2.eval(b, 1)[0]
+    assert res & 0xff800000 == 0x7f800000 and res & 0x007fffff != 0
+
+    s3 = claripy.Solver()
+    s3.add(a.isNaN())
+    res = s3.eval(a.raw_to_bv(), 1)[0]
+    assert res & 0xff800000 == 0x7f800000 and res & 0x007fffff != 0
+
 
 if __name__ == '__main__':
-
     for fparams in test_unsat_core():
         fparams[0](*fparams[1:])
 
@@ -581,3 +603,4 @@ if __name__ == '__main__':
         fparams[0](*fparams[1:])
     test_composite_solver()
     test_zero_division_in_cache_mixin()
+    test_nan()

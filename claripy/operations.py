@@ -1,4 +1,5 @@
 import itertools
+from . import debug as _d
 
 def op(name, arg_types, return_type, extra_check=None, calc_length=None, do_coerce=True, bound=True): #pylint:disable=unused-argument
     if type(arg_types) in (tuple, list): #pylint:disable=unidiomatic-typecheck
@@ -39,13 +40,14 @@ def op(name, arg_types, return_type, extra_check=None, calc_length=None, do_coer
 
     def _op(*args):
         fixed_args = tuple(_type_fixer(args))
-        for i in fixed_args:
-            if i is NotImplemented:
-                return NotImplemented
-        if extra_check is not None:
-            success, msg = extra_check(*fixed_args)
-            if not success:
-                raise ClaripyOperationError(msg)
+        if _d._DEBUG:
+            for i in fixed_args:
+                if i is NotImplemented:
+                    return NotImplemented
+            if extra_check is not None:
+                success, msg = extra_check(*fixed_args)
+                if not success:
+                    raise ClaripyOperationError(msg)
 
         #pylint:disable=too-many-nested-blocks
         simp = _handle_annotations(simplifications.simpleton.simplify(name, fixed_args), args)
@@ -160,10 +162,10 @@ def str_extract_check(start_idx, count, str_val):
     else:
         return True, ""
 
-def str_extract_length_calc(start_idx, count, str_val):
+def str_extract_length_calc(start_idx, count, str_val): # pylint: diable=unused-argument
     return count
 
-def int_to_str_length_calc(int_val):
+def int_to_str_length_calc(int_val): # pylint: disable=unused-argument
     return ast.String.MAX_LENGTH
 
 def str_replace_check(*args):
@@ -172,7 +174,7 @@ def str_replace_check(*args):
         return False, "The pattern that has to be replaced is longer than the string itself"
     return True, ""
 
-def substr_length_calc(start_idx, count, strval):
+def substr_length_calc(start_idx, count, strval): # pylint: disable=unused-argument
     # FIXME: How can I get the value of a concrete object without a solver
     return strval.string_length if not count.concrete else count.args[0]
 
@@ -198,10 +200,10 @@ def str_replace_length_calc(*args):
 def strlen_bv_size_calc(s, bitlength):
     return bitlength
 
-def strindexof_bv_size_calc(s1, s2, start_idx, bitlength):
+def strindexof_bv_size_calc(s1, s2, start_idx, bitlength): # pylint: disable=unused-argument
     return bitlength
 
-def strtoint_bv_size_calc(s, bitlength):
+def strtoint_bv_size_calc(s, bitlength): # pylint: disable=unused-argument
     return bitlength
 
 #
@@ -310,7 +312,7 @@ backend_fp_cmp_operations = {
 
 backend_fp_operations = {
     'FPS', 'fpToFP', 'fpToIEEEBV', 'fpFP', 'fpToSBV', 'fpToUBV',
-    'fpNeg', 'fpSub', 'fpAdd', 'fpMul', 'fpDiv', 'fpAbs'
+    'fpNeg', 'fpSub', 'fpAdd', 'fpMul', 'fpDiv', 'fpAbs', 'fpIsNaN', 'fpIsInf',
 } | backend_fp_cmp_operations
 
 backend_strings_operations = {
@@ -439,6 +441,75 @@ infix = {
     'Or': '||',
 
     'Concat': '..',
+}
+
+prefix = {
+    'Not': '!',
+    '__neg__': '-',
+    '__invert__': '~',
+}
+
+op_precedence = {  # based on https://en.cppreference.com/w/c/language/operator_precedence
+    # precedence: 2
+    '__pow__': 2,
+    'Not': 2,
+    '__neg__': 2,
+    '__invert__': 2,
+
+    # precedence: 3
+    '__mul__': 3,
+    '__div__': 3,
+    '__floordiv__': 3,
+    '__truediv__': 3, # the raw / operator should use integral semantics on bitvectors
+    '__mod__': 3,
+    #'__divmod__': "don't think this is used either",
+    'SDiv': 3,
+    'SMod': 3,
+
+    # precedence: 4
+    '__add__': 4,
+    '__sub__': 4,
+
+    # precedence: 5
+    '__lshift__': 5,
+    '__rshift__': 5,
+
+    # precedence: 6
+    '__ge__': 6,
+    '__le__': 6,
+    '__gt__': 6,
+    '__lt__': 6,
+
+    'UGE': 6,
+    'ULE': 6,
+    'UGT': 6,
+    'ULT': 6,
+
+    'SGE': 6,
+    'SLE': 6,
+    'SGT': 6,
+    'SLT': 6,
+
+    # precedence: 7
+    '__eq__': 7,
+    '__ne__': 7,
+
+    # precedence: 8
+    '__and__': 8,
+
+    # precedence: 9
+    '__xor__': 9,
+
+    # precedence: 10
+    '__or__': 10,
+
+    # precedence: 11
+    'And': 11,
+
+    # precedence: 12
+    'Or': 12,
+
+    #'Concat': '..',
 }
 
 commutative_operations = { '__and__', '__or__', '__xor__', '__add__', '__mul__', 'And', 'Or', 'Xor', }
