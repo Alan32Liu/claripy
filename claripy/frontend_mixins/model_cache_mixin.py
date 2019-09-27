@@ -240,8 +240,8 @@ class ModelCacheMixin:
         return super(ModelCacheMixin, self).satisfiable(extra_constraints=extra_constraints, **kwargs)
 
     def batch_eval(self, asts, n, extra_constraints=(), **kwargs):
-        # results = self._get_batch_solutions(asts, n=n, extra_constraints=extra_constraints)
-        results = set()
+        results = self._get_batch_solutions(asts, n=n, extra_constraints=extra_constraints)
+
         if len(results) == n or (len(asts) == 1 and asts[0].cache_key in self._eval_exhausted):
             return results
 
@@ -272,8 +272,7 @@ class ModelCacheMixin:
         return super(ModelCacheMixin, self).batch_iterate(asts)
 
     def eval(self, e, n, **kwargs):
-        # TODO: Will make this a separate method when introducing PST_INPUT_STR
-        return tuple( r for r in ModelCacheMixin.batch_eval(self, [e], n=n, **kwargs) )
+        return tuple( r[0] for r in ModelCacheMixin.batch_eval(self, [e], n=n, **kwargs) )
 
     def iterate(self, e):
         return self.batch_iterate([e])
