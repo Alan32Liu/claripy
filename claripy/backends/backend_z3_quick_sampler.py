@@ -82,7 +82,7 @@ class BackendZ3QuickSampler(BackendZ3):
 
         # solver = self.solver()
         solver.add(result == target)
-        solver.minimize(self._bv_count(delta))
+        solver.minimize(z3.BV2Int(delta))
         results = set()
 
         while True:
